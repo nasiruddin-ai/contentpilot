@@ -28,6 +28,7 @@ celery = Celery(
         "app.workers.opportunity_tasks",
         "app.workers.content_tasks",
         "app.workers.visual_tasks",
+        "app.workers.publishing_tasks",
     ],
 )
 
@@ -47,6 +48,10 @@ celery.conf.update(
     result_expires=60 * 60 * 24,
     broker_connection_retry_on_startup=True,
     beat_schedule={
+        "publish-due-posts": {
+            "task": "publishing.queue_due_posts",
+            "schedule": crontab(),  # every minute
+        },
         "refresh-due-sources": {
             "task": "research.refresh_due_sources",
             "schedule": crontab(minute="*/5"),

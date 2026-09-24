@@ -63,8 +63,21 @@ class PostRead(BaseModel):
     published_at: datetime | None
     approved_at: datetime | None
     review_note: str | None
+    external_post_id: str | None
+    publish_error: str | None
+    publish_attempts: int
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def published_url(self) -> str | None:
+        """Link to the live post, once published."""
+        if not self.external_post_id:
+            return None
+        from app.services.publishing_service import published_url
+
+        return published_url(self.platform, self.external_post_id)
 
     @computed_field
     @property

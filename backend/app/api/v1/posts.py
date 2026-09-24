@@ -61,7 +61,7 @@ async def list_posts(
 async def _detail(db, user, post_id: uuid.UUID) -> PostDetail:
     post, sources = await content_service.get_post(db, user, post_id)
     return PostDetail(
-        **PostRead.model_validate(post).model_dump(exclude={"full_text"}),
+        **PostRead.model_validate(post).model_dump(exclude={"full_text", "published_url"}),
         sources=[ResearchItemSummary.model_validate(s) for s in sources],
     )
 

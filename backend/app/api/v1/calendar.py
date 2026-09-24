@@ -11,7 +11,7 @@ router = APIRouter(prefix="/calendar", tags=["calendar"])
 
 
 def _item(post, thumbnail=None) -> CalendarItem:
-    return CalendarItem(**PostRead.model_validate(post).model_dump(exclude={"full_text"}), thumbnail_url=thumbnail)
+    return CalendarItem(**PostRead.model_validate(post).model_dump(exclude={"full_text", "published_url"}), thumbnail_url=thumbnail)
 
 
 @router.get("")

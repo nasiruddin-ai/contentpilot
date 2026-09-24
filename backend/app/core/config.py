@@ -50,6 +50,27 @@ class Settings(BaseSettings):
     gemini_quality_fallback_model: str = "gemini-3.5-flash"
     gemini_embedding_model: str = "gemini-embedding-2"
 
+    # Encrypts social OAuth tokens at rest. Comma-separated Fernet keys: the first encrypts,
+    # all decrypt, so keys can be rotated. Required outside development/test.
+    token_encryption_key: SecretStr | None = None
+
+    linkedin_client_id: str = ""
+    linkedin_client_secret: SecretStr | None = None
+    # Posts API version (YYYYMM). LinkedIn retires versions about a year after release.
+    linkedin_api_version: str = "202609"
+
+    # X app (console.x.com), OAuth 2.0 "Web App" client. Posting is billed per post.
+    x_client_id: str = ""
+    x_client_secret: SecretStr | None = None
+
+    # Meta app (developers.facebook.com) for publishing to Facebook Pages.
+    facebook_client_id: str = ""
+    facebook_client_secret: SecretStr | None = None
+    facebook_graph_version: str = "v25.0"
+    # Apps using "Facebook Login for Business" choose permissions in a Configuration and
+    # send its ID instead of a scope list. Leave empty for classic Facebook Login.
+    facebook_login_config_id: str = ""
+
     # Where generated media is stored. "local" writes to MEDIA_ROOT and the API serves it at /media.
     storage_backend: Literal["local"] = "local"
     media_root: str = str(BACKEND_DIR / "media")
@@ -79,6 +100,8 @@ class Settings(BaseSettings):
             secret = self.jwt_secret.get_secret_value() if self.jwt_secret else ""
             if len(secret) < 32:
                 raise ValueError("JWT_SECRET must be set to at least 32 characters in staging/production.")
+            if not self.token_encryption_key:
+                raise ValueError("TOKEN_ENCRYPTION_KEY must be set in staging/production.")
         return self
 
     @property

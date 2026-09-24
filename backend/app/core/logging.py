@@ -41,6 +41,11 @@ def configure_logging(level: str = "INFO") -> None:
 
     # Our middleware logs every request; uvicorn's access log would duplicate it.
     logging.getLogger("uvicorn.access").disabled = True
+    # httpx/httpcore log full request URLs at INFO. Some APIs (Facebook's token exchange,
+    # Graph calls) carry secrets and tokens in the query string, so those logs must never
+    # be written. Warnings and errors still come through.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     for name in ("uvicorn", "uvicorn.error", "celery"):
         logging.getLogger(name).handlers[:] = []
         logging.getLogger(name).propagate = True

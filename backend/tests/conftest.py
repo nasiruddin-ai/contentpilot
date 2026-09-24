@@ -7,6 +7,18 @@ os.environ["APP_ENV"] = "test"
 os.environ["JWT_SECRET"] = "test-secret-that-is-long-enough-for-hs256-signing"
 # Redis database 15 is reserved for tests and flushed freely.
 os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:6380/15")
+# Throwaway credentials: a real Fernet key and a fake LinkedIn app.
+os.environ["TOKEN_ENCRYPTION_KEY"] = "hZ8lL2e0q9mQ3yVv1p6JxW4tR7bN5cK8sD2fG1hJ0aE="
+os.environ["LINKEDIN_CLIENT_ID"] = "test-client-id"
+os.environ["LINKEDIN_CLIENT_SECRET"] = "test-client-secret"
+os.environ["X_CLIENT_ID"] = "test-x-client-id"
+os.environ["X_CLIENT_SECRET"] = "test-x-client-secret"
+os.environ["FACEBOOK_CLIENT_ID"] = "1234567890"
+os.environ["FACEBOOK_CLIENT_SECRET"] = "test-facebook-secret"
+# Tests must not depend on the developer's own .env (environment variables win over it).
+os.environ["FACEBOOK_LOGIN_CONFIG_ID"] = ""
+os.environ["LINKEDIN_API_VERSION"] = "202609"
+os.environ["FACEBOOK_GRAPH_VERSION"] = "v25.0"
 # Generated media goes to a throwaway folder.
 os.environ["MEDIA_ROOT"] = tempfile.mkdtemp(prefix="contentpilot-media-")
 

@@ -2,6 +2,7 @@
 from app.models.ai_run import AIRun, AIRunStatus
 from app.models.brand import Brand
 from app.models.content_pillar import BrandContentPillar, ContentPillar
+from app.models.notification import Notification
 from app.models.opportunity import (
     ContentFormat,
     ContentOpportunity,
@@ -22,6 +23,7 @@ from app.models.post import (
 )
 from app.models.refresh_token import RefreshToken
 from app.models.research import ResearchContentType, ResearchItem, ResearchRun, RunStatus, RunTrigger
+from app.models.social_account import SocialAccount, SocialAccountStatus
 from app.models.source import FetchFrequency, Source, SourceStatus, SourceType
 from app.models.topic import ResearchItemTopic, Topic
 from app.models.user import User
@@ -39,6 +41,7 @@ __all__ = [
     "EDITABLE_STATUSES",
     "FetchFrequency",
     "GenerationStatus",
+    "Notification",
     "OpportunityRun",
     "OpportunityRunStatus",
     "OpportunityStatus",
@@ -56,6 +59,8 @@ __all__ = [
     "RevisionAction",
     "RunStatus",
     "RunTrigger",
+    "SocialAccount",
+    "SocialAccountStatus",
     "Source",
     "SourceStatus",
     "SourceType",

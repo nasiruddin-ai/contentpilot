@@ -18,7 +18,9 @@ The full build spec is `ContentPilot_AI_Python_FastAPI_Build_Specification.md`; 
 | Prompt 9: AI content generation (hook, outline, draft, platform adaptation, quality check) | Done, live-verified 2026-09-24 |
 | Prompt 10: Visual generation (image provider, storage, Pillow, carousels) | Done for rendered designs, live-verified 2026-09-24. AI-image types wait for a paid Gemini plan |
 | Prompt 11: Content editor and calendar (edit, regenerate, approve, reject, schedule) | Done, live-verified 2026-09-24 |
-| Prompt 12: Social OAuth and one publishing adapter | Next |
+| Prompt 12: Social OAuth and publishing adapters | LinkedIn and X built and tested against mocks of their documented APIs. Live tests pending: the LinkedIn app is "disabled" by LinkedIn; X API access is paid |
+| Prompt 13: Scheduled publishing workers (retries, backoff, idempotency, notifications) | Done; beat sweep verified in Docker 2026-09-24 |
+| Prompt 14: Analytics sync and learning loop | Next |
 
 What exists now:
 
@@ -41,7 +43,10 @@ What exists now:
 - Content generation: 4-stage writing pipeline with platform adaptation, deterministic quality checks and an AI editor (see below)
 - Visuals: brand-styled quote cards, minimal graphics, infographics and carousels (PNG + LinkedIn-ready PDF) rendered with Pillow, stored behind a storage interface (see below)
 - Editor and calendar: edit, AI revise (7 actions), approve, reject, version history with restore, scheduling (see below)
-- 274 pytest tests (the database/Redis ones need Docker running; they are skipped otherwise)
+- LinkedIn: OAuth connect with encrypted tokens, publish now (text, image, carousel PDF as a document post) (see below)
+- X: OAuth 2.0 with PKCE and automatic token refresh, text posts
+- Scheduled publishing: every-minute sweep, retries with backoff, duplicate-safe failure handling, in-app notifications
+- 315 pytest tests (the database/Redis ones need Docker running; they are skipped otherwise)
 
 ## Run with Docker (recommended)
 
@@ -347,6 +352,72 @@ Scheduling only plans a post for now. Publishing it at that time comes with the 
 Live on 2026-09-24:
 - An approved LinkedIn post was shortened (365 characters) and then rewritten "playful and upbeat". Both came back as drafts with no quality issues, and both earlier versions were kept.
 - After re-approval it was scheduled and appeared in the week's calendar.
+
+## LinkedIn connection and publishing
+
+Built from LinkedIn's current docs (read 2026-09-24): the 3-legged OAuth flow, the Posts API (`/rest/posts`, which replaced `ugcPosts`), the Images and Documents upload APIs, and the "little" text format.
+
+- **Permissions:** `openid profile w_member_social`. These come from the self-serve products **Share on LinkedIn** and **Sign In with LinkedIn using OpenID Connect**, and allow posting to the connected member's **personal profile**. Company-page posting (`w_organization_social`) needs LinkedIn partner approval.
+- **Tokens** last 60 days. Refresh tokens are only issued to approved LinkedIn partners, so members reconnect when a token expires.
+  - The expiry date is stored. Expired or rejected (401) connections show as `reconnect_required`, and publishing is refused until the member reconnects.
+- **Security:**
+  - Tokens are Fernet-encrypted at rest (`TOKEN_ENCRYPTION_KEY`; comma-separate several keys to rotate) and never returned by the API.
+  - The OAuth `state` is random, bound to the user and brand in Redis for 10 minutes, and single-use (GETDEL), so forged or replayed callbacks fail.
+  - The callback page escapes everything it shows.
+  - The access token is only sent to LinkedIn hosts, including when uploading media, and it is scrubbed from error messages.
+- **Post text** is converted to LinkedIn's "little" format: reserved characters (`\ | { } @ [ ] ( ) < > # * _ ~`) are escaped and hashtags use `{hashtag|\#|Tag}`.
+- **Media:** a carousel visual is uploaded as a **document** (its PDF), which LinkedIn shows as a swipeable carousel. A single-image visual is uploaded as an **image**, with its alt text. Posts without a visual are text posts.
+- **`LINKEDIN_API_VERSION`** defaults to `202609`. LinkedIn retires versions about a year after release, so update it periodically.
+
+| Endpoint | Notes |
+|---|---|
+| `GET /api/v1/social/accounts?brand_id=` | Connected accounts (name, status, token expiry; never tokens) |
+| `POST /api/v1/social/linkedin/connect` | `{"brand_id"}` → `authorization_url`; open it in the browser |
+| `GET /api/v1/social/linkedin/callback` | LinkedIn redirects here; shows a "Connected" page |
+| `POST /api/v1/social/linkedin/disconnect` | `{"brand_id"}` |
+| `POST /api/v1/publishing/{post_id}/publish` | Approved or scheduled LinkedIn posts without errors → `publishing` → `published` (with `external_post_id`) or `failed` (with `publish_error`) |
+
+A post is never published twice: a job that runs again for a post that already has an `external_post_id` does nothing.
+
+Automatic publishing at `scheduled_at`, with retries and backoff, is Prompt 13.
+
+**LinkedIn app setup** (one time):
+1. Go to https://www.linkedin.com/developers/apps, click **Create app**, and link it to your LinkedIn Page.
+2. On the **Products** tab, add **Share on LinkedIn** and **Sign In with LinkedIn using OpenID Connect**.
+3. On the **Auth** tab, add the redirect URL `http://localhost:8000/api/v1/social/linkedin/callback` (use your real `API_URL` in production).
+4. Copy the Client ID and Client Secret into `.env` as `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`, then run `docker compose up -d --force-recreate api worker beat`.
+
+## X connection
+
+`app/integrations/x.py`: X's OAuth 2.0 authorization code flow **with PKCE**. The verifier is kept only in the single-use Redis state entry, and the challenge uses S256.
+
+- Scopes: `tweet.read tweet.write users.read offline.access`.
+- Access tokens last 2 hours. The refresh token (from `offline.access`) is used automatically when a token is within 5 minutes of expiry. X rotates refresh tokens, so the new one is always saved, under a row lock so two publishes can't spend the same one.
+- Posts are text for now (`POST /2/tweets`), within the 280-character limit ContentPilot enforces. Images on X need X's media upload and come later.
+- **Cost:** X has had no free API tier since February 2026. It is pay-per-use, about $0.015 per post or $0.20 per post with a link (third-party pricing guides, September 2026). An empty balance gives `NO_CREDITS`.
+- **Setup:** at console.x.com, create an app. Under User authentication settings choose Read and write, Web App, and the callback `API_URL/api/v1/social/x/callback`. Put the **OAuth 2.0 Client ID and Client Secret** (not the API Key/Secret) in `.env` as `X_CLIENT_ID` and `X_CLIENT_SECRET`.
+
+## Scheduled publishing and notifications
+
+- **Sweep:** Celery beat runs `publishing.queue_due_posts` every minute. It moves `scheduled` posts whose `scheduled_at` has passed to `publishing` and queues them, using `SKIP LOCKED` so parallel sweeps don't collide.
+- **One run per post:** each publish holds a Redis lock `lock:publish:{post_id}`, and a post that already has an `external_post_id` is never sent again.
+- **Failure handling:** neither platform supports idempotency keys, so the rule is to never risk a duplicate.
+
+| Failure | Could the post be live? | Action |
+|---|---|---|
+| Couldn't connect, 429, 502/503/504, or media upload failed | No | Retry after 1, 4, then 16 minutes; after 4 attempts fail with a notification |
+| The create call timed out, the connection dropped, or it returned 500 | Maybe | `failed` with `PUBLISH_UNCERTAIN` and a notification asking the user to check their profile. No automatic retry |
+| Login expired, no credits, permission denied, rejected | No | `failed` with the reason. An expired login also marks the account `reconnect_required` and sends a single reconnect notification |
+
+- A post stuck in `publishing` for more than 30 minutes (for example, a crashed worker) is marked `PUBLISH_UNCERTAIN` rather than retried.
+- Failed posts can be retried by hand with `POST /publishing/{id}/publish`.
+- Published posts expose `published_url`.
+- **Notifications** (in-app; email needs an email provider):
+  - `GET /notifications?unread_only=`
+  - `GET /notifications/unread-count`
+  - `POST /notifications/{id}/read`
+  - `POST /notifications/read-all`
+  - Types: `post_published` (with a link), `publish_failed`, `publish_uncertain`, `reconnect_required`.
 
 ## Database migrations
 

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -89,6 +89,10 @@ class Post(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Why it was rejected, when it was.
     review_note: Mapped[str | None] = mapped_column(String(500))
+    # Why the last publish attempt failed.
+    publish_error: Mapped[str | None] = mapped_column(String(500))
+    # Attempts in the current publish run (reset when a new run starts).
+    publish_attempts: Mapped[int] = mapped_column(default=0, server_default=text("0"))
 
 
 # Posts that can still be edited, revised, approved or rejected.
