@@ -47,8 +47,12 @@ class ResearchItemSummary(BaseModel):
     fetched_at: datetime
     summary: str
     content_type: ResearchContentType
+    topics: list[str]
+    analyzed_at: datetime | None
 
 
 class ResearchItemRead(ResearchItemSummary):
     clean_text: str
+    keywords: list[str]
+    entities: list[str]
     source_metadata: dict

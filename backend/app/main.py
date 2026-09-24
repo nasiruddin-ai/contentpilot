@@ -1,8 +1,11 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.health import router as health_router
 from app.api.v1 import api_router
@@ -52,6 +55,10 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(api_router)
+    if settings.storage_backend == "local":
+        # Generated media. File names are random per version; StaticFiles blocks path traversal.
+        Path(settings.media_root).mkdir(parents=True, exist_ok=True)
+        app.mount("/media", StaticFiles(directory=settings.media_root), name="media")
     return app
 
 

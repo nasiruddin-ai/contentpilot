@@ -7,6 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Open-source fonts for rendered visuals (Inter matches the default brand kit; DejaVu is the fallback).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-inter fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
@@ -14,7 +19,9 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 COPY app ./app
 
-RUN useradd --create-home --uid 1000 appuser
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir -p /data/media \
+    && chown appuser /data/media
 USER appuser
 
 EXPOSE 8000

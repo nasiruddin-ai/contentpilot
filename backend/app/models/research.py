@@ -2,12 +2,13 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
-from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin, str_enum
+from app.models.base import EMBEDDING_DIMENSIONS, TimestampMixin, UUIDPrimaryKeyMixin, str_enum
 
 
 class ResearchContentType(StrEnum):
@@ -43,6 +44,13 @@ class ResearchItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Near-duplicate detection: 64-bit SimHash stored as a signed BIGINT.
     simhash: Mapped[int] = mapped_column(BigInteger)
     source_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+
+    # Filled by AI analysis (spec section 17). `summary` is replaced with the AI summary.
+    topics: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default=text("'{}'"))
+    keywords: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default=text("'{}'"))
+    entities: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default=text("'{}'"))
+    analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
 
 
 class RunTrigger(StrEnum):

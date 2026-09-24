@@ -17,5 +17,9 @@ lxml==5.*
 trafilatura==2.*
 feedparser==6.*
 
+pgvector==0.3.*
+
+pillow==11.*
+
 redis==5.*
 celery[redis]==5.4.*

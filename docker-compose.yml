@@ -7,10 +7,13 @@ x-backend: &backend
     REDIS_URL: redis://redis:6379/0
     CELERY_BROKER_URL: redis://redis:6379/0
     CELERY_RESULT_BACKEND: redis://redis:6379/1
+    MEDIA_ROOT: /data/media
   volumes:
     - ./backend/app:/app/app
     - ./backend/migrations:/app/migrations
     - ./backend/alembic.ini:/app/alembic.ini
+    # Generated images: written by workers, served by the API at /media.
+    - media_data:/data/media
   depends_on:
     postgres:
       condition: service_healthy
@@ -76,3 +79,4 @@ services:
 
 volumes:
   postgres_data:
+  media_data:

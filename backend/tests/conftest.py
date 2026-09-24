@@ -1,11 +1,14 @@
 import asyncio
 import os
 import sys
+import tempfile
 
 os.environ["APP_ENV"] = "test"
 os.environ["JWT_SECRET"] = "test-secret-that-is-long-enough-for-hs256-signing"
 # Redis database 15 is reserved for tests and flushed freely.
 os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:6380/15")
+# Generated media goes to a throwaway folder.
+os.environ["MEDIA_ROOT"] = tempfile.mkdtemp(prefix="contentpilot-media-")
 
 # psycopg's async mode can't run on Windows' default Proactor event loop.
 if sys.platform == "win32":

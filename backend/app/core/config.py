@@ -41,6 +41,21 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     google_ai_api_key: SecretStr | None = None
 
+    # AI routing (spec section 68): cheap model for simple tasks, stronger one for writing.
+    ai_provider: Literal["gemini"] = "gemini"
+    gemini_fast_model: str = "gemini-3.5-flash-lite"
+    gemini_quality_model: str = "gemini-3.8-flash"
+    # Used when the main model is overloaded or rate limited. Empty disables.
+    gemini_fast_fallback_model: str = "gemini-3.1-flash-lite"
+    gemini_quality_fallback_model: str = "gemini-3.5-flash"
+    gemini_embedding_model: str = "gemini-embedding-2"
+
+    # Where generated media is stored. "local" writes to MEDIA_ROOT and the API serves it at /media.
+    storage_backend: Literal["local"] = "local"
+    media_root: str = str(BACKEND_DIR / "media")
+    # Public base URL for media; defaults to API_URL + /media.
+    media_base_url: str = ""
+
     @field_validator("database_url")
     @classmethod
     def _use_psycopg_driver(cls, value: str) -> str:
@@ -69,6 +84,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def media_url(self) -> str:
+        return (self.media_base_url or f"{self.api_url.rstrip('/')}/media").rstrip("/")
 
     @property
     def cookie_secure(self) -> bool:

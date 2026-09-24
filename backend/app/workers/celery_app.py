@@ -21,7 +21,14 @@ celery = Celery(
     "contentpilot",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.workers.system_tasks", "app.workers.auth_tasks", "app.workers.research_tasks"],
+    include=[
+        "app.workers.system_tasks",
+        "app.workers.auth_tasks",
+        "app.workers.research_tasks",
+        "app.workers.opportunity_tasks",
+        "app.workers.content_tasks",
+        "app.workers.visual_tasks",
+    ],
 )
 
 celery.conf.update(

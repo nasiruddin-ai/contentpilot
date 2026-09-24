@@ -5,6 +5,9 @@ from enum import StrEnum
 from sqlalchemy import DateTime, Enum, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
+# Size of stored embedding vectors. Changing it needs a migration and re-embedding.
+EMBEDDING_DIMENSIONS = 768
+
 
 class UUIDPrimaryKeyMixin:
     id: Mapped[uuid.UUID] = mapped_column(

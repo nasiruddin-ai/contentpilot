@@ -6,3 +6,4 @@ __pycache__/
 celerybeat-schedule*
 node_modules/
 .next/
+backend/media/
