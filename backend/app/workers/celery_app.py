@@ -21,7 +21,7 @@ celery = Celery(
     "contentpilot",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.workers.system_tasks", "app.workers.auth_tasks"],
+    include=["app.workers.system_tasks", "app.workers.auth_tasks", "app.workers.research_tasks"],
 )
 
 celery.conf.update(
@@ -40,6 +40,10 @@ celery.conf.update(
     result_expires=60 * 60 * 24,
     broker_connection_retry_on_startup=True,
     beat_schedule={
+        "refresh-due-sources": {
+            "task": "research.refresh_due_sources",
+            "schedule": crontab(minute="*/5"),
+        },
         "purge-stale-refresh-tokens": {
             "task": "auth.purge_stale_refresh_tokens",
             "schedule": crontab(hour=3, minute=0),

@@ -1,11 +1,11 @@
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
-from app.models.base import UUIDPrimaryKeyMixin
+from app.models.base import UUIDPrimaryKeyMixin, str_enum
 
 
 class ContentPillar(StrEnum):
@@ -42,14 +42,5 @@ class BrandContentPillar(UUIDPrimaryKeyMixin, Base):
     )
 
     brand_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), index=True)
-    pillar: Mapped[ContentPillar] = mapped_column(
-        Enum(
-            ContentPillar,
-            name="content_pillar",
-            native_enum=False,
-            create_constraint=True,
-            length=40,
-            values_callable=lambda members: [m.value for m in members],
-        )
-    )
+    pillar: Mapped[ContentPillar] = mapped_column(str_enum(ContentPillar, "content_pillar"))
     weight: Mapped[int]

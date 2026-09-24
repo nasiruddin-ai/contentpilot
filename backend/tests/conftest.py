@@ -103,3 +103,52 @@ def api_client(db_engine, monkeypatch):
     get_settings.cache_clear()
     with db_engine.begin() as conn:
         conn.execute(text("TRUNCATE users CASCADE"))
+
+
+# --- API helpers shared by feature tests ------------------------------------
+
+PASSWORD = "a-strong-password"
+
+
+def sign_up(client, email: str) -> None:
+    client.cookies.clear()
+    response = client.post("/api/v1/auth/register", json={"name": "Owner", "email": email, "password": PASSWORD})
+    assert response.status_code == 201
+
+
+def add_source(client, brand_id, url="https://example.com/feed", source_type="rss", **extra):
+    return client.post(
+        "/api/v1/sources",
+        json={"brand_id": brand_id, "name": "Example", "url": url, "source_type": source_type, **extra},
+    )
+
+
+@pytest.fixture
+def net(api_client, monkeypatch):
+    """Routes all DNS and HTTP (API and worker code) through a fake internet, and
+    records research jobs instead of sending them to Celery."""
+    from app.api.v1.sources import get_fetcher
+    from app.research.fetcher import clear_robots_cache
+    from app.services import research_service, source_service
+    from app.utils import urls
+    from tests.fakes import FakeInternet
+
+    fake = FakeInternet(dns={"intranet.example": ["10.0.0.7"]})
+
+    async def check(raw):
+        return await urls.check_public_url(raw, resolver=fake.resolve)
+
+    monkeypatch.setattr(source_service, "check_public_url", check)
+    monkeypatch.setattr(research_service, "fetcher_factory", lambda: fake.fetcher())
+    fake.enqueued = []
+    monkeypatch.setattr(research_service, "enqueue_run", fake.enqueued.append)
+    api_client.app.dependency_overrides[get_fetcher] = lambda: fake.fetcher()
+    clear_robots_cache()
+    yield fake
+    clear_robots_cache()
+
+
+@pytest.fixture
+def brand_id(api_client, net):
+    sign_up(api_client, "owner@example.com")
+    return api_client.post("/api/v1/brands", json={"name": "Squareko"}).json()["id"]

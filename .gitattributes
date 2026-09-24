@@ -1,0 +1,4 @@
+# Keep Linux line endings so files work unchanged inside Docker containers.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
