@@ -18,9 +18,10 @@ The full build spec is `ContentPilot_AI_Python_FastAPI_Build_Specification.md`; 
 | Prompt 9: AI content generation (hook, outline, draft, platform adaptation, quality check) | Done, live-verified 2026-09-24 |
 | Prompt 10: Visual generation (image provider, storage, Pillow, carousels) | Done for rendered designs, live-verified 2026-09-24. AI-image types wait for a paid Gemini plan |
 | Prompt 11: Content editor and calendar (edit, regenerate, approve, reject, schedule) | Done, live-verified 2026-09-24 |
-| Prompt 12: Social OAuth and publishing adapters | LinkedIn and X built and tested against mocks of their documented APIs. Live tests pending: the LinkedIn app is "disabled" by LinkedIn; X API access is paid |
+| Prompt 12: Social OAuth and publishing adapters | **Facebook Pages live-verified 2026-09-26** (connect, publish, Graph read-back). LinkedIn and X built and tested against mocks; live tests pending (LinkedIn app "disabled" by LinkedIn; X API is paid) |
 | Prompt 13: Scheduled publishing workers (retries, backoff, idempotency, notifications) | Done; beat sweep verified in Docker 2026-09-24 |
-| Prompt 14: Analytics sync and learning loop | Next |
+| Prompt 14: Analytics sync and learning loop | Done; Facebook sync live-verified 2026-09-26 with all metrics (likes, comments, shares, clicks) |
+| Prompt 15: Subscriptions, usage tracking, Stripe billing | Next |
 
 What exists now:
 
@@ -46,7 +47,8 @@ What exists now:
 - LinkedIn: OAuth connect with encrypted tokens, publish now (text, image, carousel PDF as a document post) (see below)
 - X: OAuth 2.0 with PKCE and automatic token refresh, text posts
 - Scheduled publishing: every-minute sweep, retries with backoff, duplicate-safe failure handling, in-app notifications
-- 315 pytest tests (the database/Redis ones need Docker running; they are skipped otherwise)
+- Analytics: 6-hourly metrics sync (Facebook live, X from docs), goal-weighted engagement scoring, reports by post/platform/topic, and a learning loop that feeds opportunity generation
+- 342 pytest tests (the database/Redis ones need Docker running; they are skipped otherwise)
 
 ## Run with Docker (recommended)
 
@@ -418,6 +420,24 @@ Automatic publishing at `scheduled_at`, with retries and backoff, is Prompt 13.
   - `POST /notifications/{id}/read`
   - `POST /notifications/read-all`
   - Types: `post_published` (with a link), `publish_failed`, `publish_uncertain`, `reconnect_required`.
+
+## Analytics and the learning loop
+
+`app/services/analytics_service.py`, spec sections 57, 60-61.
+
+- **Sync:** Celery beat runs `analytics.sync_all` every 6 hours (`POST /analytics/sync` runs one now). For each brand with a connected account it pulls numbers for posts published in the last 90 days and stores a **snapshot per sync** in `post_metrics`, so growth over time is kept; reports use the latest snapshot per post.
+- **What each platform provides** (only real metrics are stored; the rest stay `null`):
+
+| Platform | Likes | Comments | Shares | Clicks | Impressions / reach | Notes |
+|---|---|---|---|---|---|---|
+| Facebook Page | reactions total | yes | yes | yes | **no** (retired by Meta) | comments/reactions need `pages_read_user_content`; clicks and reaction breakdown need `read_insights`. Missing permissions are reported per post and in the overview `notes`, never fatal |
+| X | yes | replies | retweets + quotes | no | yes | Built from the docs, mock-tested, not verified live |
+| LinkedIn | — | — | — | — | — | Member post analytics need partner approval (`r_member_social`); skipped with a reason |
+
+- **Engagement score** (section 61, "do not optimize only for likes"): `likes×1 + comments×3 + shares×4 + clicks×2`. When the brand's goals mention leads, traffic, sales, enquiries or clients, clicks weigh **5**. `engagement_rate` = score ÷ impressions, only where impressions exist.
+- **Reports:** `GET /analytics/overview`, `/posts` (best first), `/platforms`, `/topics` (topics, pillars and formats), each with `?brand_id=&days=`. Group rows carry `vs_brand_average`: `above_average` (≥ 1.25× brand average), `average`, `below_average` (≤ 0.75×) or `not_enough_data` (fewer than 3 posts).
+- **Learning loop:** once a brand has **5+ scored posts**, `learn()` writes a short "WHAT HAS WORKED" summary (strong and weak pillars, formats, topics, platforms) that is added to the opportunity-generation prompt, and computes per-pillar and per-format priority adjustments of at most **±10**. Research relevance still dominates, and the summary tells the model to keep the pillar mix balanced.
+- Facebook Graph responses embed the access token in paging links; the client never stores or logs raw responses, and `raw` keeps only the reaction breakdown.
 
 ## Database migrations
 

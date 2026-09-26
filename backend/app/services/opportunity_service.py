@@ -31,7 +31,7 @@ from app.models import (
     ResearchItemTopic,
     User,
 )
-from app.services import brand_service, topic_service
+from app.services import analytics_service, brand_service, topic_service
 
 logger = logging.getLogger(__name__)
 
@@ -218,12 +218,20 @@ def _generate(brand_id: uuid.UUID, count: int, context: AIContext, run_id: uuid.
                 )
             )
         ]
+        learning = analytics_service.learning_for_brand(db, brand_id)
     if not topics:
         raise AppError("NO_RESEARCH", "No recent analyzed research to work from. Add sources and run research first.")
 
     accepted, rejected = asyncio.run(
-        _draft_and_screen(topic_service.ai_service_factory(), brand_text, topics, count, existing, banned, context, now)
+        _draft_and_screen(
+            topic_service.ai_service_factory(), brand_text, topics, count, existing, banned, context, now, learning.summary_text
+        )
     )
+    # Learned adjustments are small and bounded, so research relevance still leads.
+    for item in accepted:
+        delta = learning.boosts.get(("content_pillar", item.draft.content_pillar.value if item.draft.content_pillar else ""), 0)
+        delta += learning.boosts.get(("content_type", item.draft.recommended_format.value), 0)
+        item.priority = max(0, min(100, item.priority + delta))
     with sync_session() as db:
         for item in accepted:
             d = item.draft
@@ -280,6 +288,7 @@ async def _draft_and_screen(
     banned: list[str],
     context: AIContext,
     now: datetime,
+    performance: str = "",
 ) -> tuple[list[Accepted], int]:
     prompt_topics = [
         PromptTopic(
@@ -297,7 +306,7 @@ async def _draft_and_screen(
     ]
     batch = await ai.generate_structured(
         task="opportunity_generation",
-        prompt=opportunity_prompt(brand_text, prompt_topics, count),
+        prompt=opportunity_prompt(brand_text, prompt_topics, count, performance),
         schema=OpportunityBatch,
         system=SYSTEM,
         context=context,

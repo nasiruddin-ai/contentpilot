@@ -85,7 +85,7 @@ def connect(client, brand_id):
     parts = urlsplit(url)
     query = parse_qs(parts.query)
     assert f"{parts.netloc}{parts.path}" == "www.facebook.com/v25.0/dialog/oauth"
-    assert query["scope"] == ["pages_show_list,pages_manage_posts,pages_read_engagement"]
+    assert query["scope"] == ["pages_show_list,pages_manage_posts,pages_read_engagement,pages_read_user_content,read_insights"]
     assert query["client_id"] == ["1234567890"]
     return client.get("/api/v1/social/facebook/callback", params={"code": "fb-code", "state": query["state"][0]})
 

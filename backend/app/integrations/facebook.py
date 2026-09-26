@@ -12,14 +12,17 @@ don't expire; they're invalidated only by events such as revoked access.
 
 import hashlib
 import hmac
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
 import httpx
 
 from app.core.config import get_settings
 
-SCOPES = ("pages_show_list", "pages_manage_posts", "pages_read_engagement")
+SCOPES = ("pages_show_list", "pages_manage_posts", "pages_read_engagement", "pages_read_user_content", "read_insights")
+# Metric names confirmed valid against Graph v26 on 2026-09-26. Impressions and reach
+# metrics (post_impressions*, page_impressions*) have been retired by Meta.
+POST_INSIGHT_METRICS = "post_clicks,post_reactions_by_type_total"
 REQUIRED = {"pages_show_list", "pages_manage_posts"}
 MAX_PHOTOS = 10
 TIMEOUT = httpx.Timeout(30.0, connect=10.0)
@@ -42,6 +45,17 @@ class FacebookError(Exception):
         self.message = message
         self.retryable = retryable
         self.status = status
+
+
+@dataclass
+class PostMetrics:
+    likes: int | None = None
+    comments: int | None = None
+    shares: int | None = None
+    clicks: int | None = None
+    impressions: int | None = None
+    reactions_by_type: dict | None = None
+    missing_permissions: list = field(default_factory=list)
 
 
 @dataclass
@@ -138,6 +152,47 @@ class FacebookClient:
             timeout=UPLOAD_TIMEOUT,
         )
         return str(data["id"])
+
+    async def post_metrics(self, post_id: str) -> "PostMetrics":
+        """Engagement numbers for one Page post. Missing permissions leave fields None
+        and are reported, rather than failing the whole sync."""
+        metrics = PostMetrics()
+        base = await self._call("GET", f"/{post_id}", params={"fields": "id,shares"})
+        metrics.shares = int((base.get("shares") or {}).get("count") or 0)
+
+        # Comment and reaction totals need pages_read_user_content.
+        try:
+            data = await self._call(
+                "GET", f"/{post_id}", params={"fields": "comments.summary(true).limit(0),reactions.summary(true).limit(0)"}
+            )
+            metrics.comments = int(((data.get("comments") or {}).get("summary") or {}).get("total_count") or 0)
+            metrics.likes = int(((data.get("reactions") or {}).get("summary") or {}).get("total_count") or 0)
+        except FacebookError as exc:
+            if exc.code != "PERMISSION_DENIED":
+                raise
+            metrics.missing_permissions.append("pages_read_user_content")
+
+        # Clicks and reactions by type come from insights (read_insights).
+        try:
+            insights = await self._call("GET", f"/{post_id}/insights", params={"metric": POST_INSIGHT_METRICS})
+            values = {}
+            for item in insights.get("data") or []:
+                first = (item.get("values") or [{}])[0]
+                values[item.get("name")] = first.get("value")
+            if not values:
+                metrics.missing_permissions.append("read_insights")
+            if isinstance(values.get("post_clicks"), int):
+                metrics.clicks = values["post_clicks"]
+            by_type = values.get("post_reactions_by_type_total")
+            if isinstance(by_type, dict):
+                metrics.reactions_by_type = {k: int(v) for k, v in by_type.items()}
+                if metrics.likes is None:
+                    metrics.likes = sum(metrics.reactions_by_type.values())
+        except FacebookError as exc:
+            if exc.code != "PERMISSION_DENIED":
+                raise
+            metrics.missing_permissions.append("read_insights")
+        return metrics
 
     async def create_post(self, page_id: str, message: str, photo_ids: list[str] | None = None) -> str:
         form = {"message": message}

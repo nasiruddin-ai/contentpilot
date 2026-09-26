@@ -1,4 +1,5 @@
 # Import every model here so Base.metadata (and Alembic) sees all tables.
+from app.models.analytics import AnalyticsSync, PostMetric, SyncStatus
 from app.models.ai_run import AIRun, AIRunStatus
 from app.models.brand import Brand
 from app.models.content_pillar import BrandContentPillar, ContentPillar
@@ -32,6 +33,7 @@ from app.models.visual import RENDERED_TYPES, Visual, VisualStatus, VisualType
 __all__ = [
     "AIRun",
     "AIRunStatus",
+    "AnalyticsSync",
     "Brand",
     "BrandContentPillar",
     "ContentFormat",
@@ -47,6 +49,7 @@ __all__ = [
     "OpportunityStatus",
     "Platform",
     "Post",
+    "PostMetric",
     "PostRevision",
     "PostStatus",
     "PostVersion",
@@ -64,6 +67,7 @@ __all__ = [
     "Source",
     "SourceStatus",
     "SourceType",
+    "SyncStatus",
     "Topic",
     "User",
     "Visual",

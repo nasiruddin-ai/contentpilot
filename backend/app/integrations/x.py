@@ -100,6 +100,27 @@ class XClient:
         data = response.json().get("data") or {}
         return XUser(id=str(data["id"]), name=data.get("name") or "", username=data.get("username") or "")
 
+    async def post_metrics(self, post_ids: list[str]) -> dict[str, dict]:
+        """public_metrics for up to 100 of the user's posts, keyed by post ID.
+        Built from the docs; not yet verified against the live API."""
+        if not post_ids:
+            return {}
+        response = await self._api(
+            "GET", "/2/tweets", params={"ids": ",".join(post_ids[:100]), "tweet.fields": "public_metrics"}
+        )
+        result = {}
+        for item in response.json().get("data") or []:
+            m = item.get("public_metrics") or {}
+            result[str(item["id"])] = {
+                "likes": m.get("like_count"),
+                "comments": m.get("reply_count"),
+                "shares": (m.get("retweet_count") or 0) + (m.get("quote_count") or 0),
+                "impressions": m.get("impression_count"),
+                "clicks": None,
+                "raw": m,
+            }
+        return result
+
     async def create_post(self, text: str) -> str:
         response = await self._api("POST", "/2/tweets", json={"text": text})
         post_id = (response.json().get("data") or {}).get("id")

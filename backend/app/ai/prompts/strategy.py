@@ -72,7 +72,7 @@ made-up one.
 Never use the brand's banned words."""
 
 
-def opportunity_prompt(brand_context: str, topics: list[PromptTopic], count: int) -> str:
+def opportunity_prompt(brand_context: str, topics: list[PromptTopic], count: int, performance: str = "") -> str:
     topic_blocks = []
     for topic in topics:
         sources = "\n".join(
@@ -85,8 +85,9 @@ def opportunity_prompt(brand_context: str, topics: list[PromptTopic], count: int
     formats = ", ".join(f.value for f in ContentFormat)
     platforms = ", ".join(p.value for p in Platform)
     pillars = ", ".join(p.value for p in ContentPillar)
+    learned = f"\n\n{performance}" if performance else ""
     return f"""BRAND
-{brand_context}
+{brand_context}{learned}
 
 TASK
 Suggest {count} distinct content opportunities for this brand, drawn from the trending topics below.

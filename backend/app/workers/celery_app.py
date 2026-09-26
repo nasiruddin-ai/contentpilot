@@ -29,6 +29,7 @@ celery = Celery(
         "app.workers.content_tasks",
         "app.workers.visual_tasks",
         "app.workers.publishing_tasks",
+        "app.workers.analytics_tasks",
     ],
 )
 
@@ -55,6 +56,10 @@ celery.conf.update(
         "refresh-due-sources": {
             "task": "research.refresh_due_sources",
             "schedule": crontab(minute="*/5"),
+        },
+        "sync-analytics": {
+            "task": "analytics.sync_all",
+            "schedule": crontab(minute=15, hour="*/6"),
         },
         "purge-stale-refresh-tokens": {
             "task": "auth.purge_stale_refresh_tokens",
