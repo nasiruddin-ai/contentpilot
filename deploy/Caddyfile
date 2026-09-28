@@ -1,0 +1,34 @@
+# Reverse proxy with automatic HTTPS (Let's Encrypt) for docker-compose.prod.yml.
+# DOMAIN and ACME_EMAIL come from .env.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	request_body {
+		max_size 10MB
+	}
+
+	# API, OAuth callbacks, generated images and health checks go straight to FastAPI.
+	@backend path /api/* /media/* /health /health/*
+	handle @backend {
+		reverse_proxy api:8000
+	}
+
+	# Everything else is the Next.js app.
+	handle {
+		reverse_proxy web:3000
+	}
+}

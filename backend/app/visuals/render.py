@@ -112,12 +112,12 @@ def fit_text(
     """Largest font size at which `text` fits in `box`. Returns (font, lines, truncated)."""
     width, height = box
     for size in range(max_size, min_size - 1, -2):
-        font = fonts.load(family, size, bold)
+        font = fonts.load(family, size, bold, text)
         lines = _wrap(text, font, width)
         if len(lines) * size * spacing <= height and all(font.getlength(line) <= width for line in lines):
             return font, lines, False
 
-    font = fonts.load(family, min_size, bold)
+    font = fonts.load(family, min_size, bold, text)
     lines = _wrap(text, font, width)
     max_lines = max(1, int(height // (min_size * spacing)))
     if len(lines) > max_lines:
@@ -131,7 +131,7 @@ def _draw_lines(draw, lines, font, x, y, fill, spacing=1.2, align="left", width=
     size = font.size
     for line in lines:
         dx = x + (width - font.getlength(line)) / 2 if align == "center" else x
-        draw.text((dx, y), line, font=font, fill=fill)
+        fonts.draw_text(draw, (dx, y), line, font, fill)
         y += int(size * spacing)
     return y
 
@@ -214,9 +214,10 @@ def render_slide(
             _draw_lines(draw, sub_lines, sub_font, x, y + int(big * 0.5), text, align=align, width=box_w)
 
     # Footer: brand name, and slide position for carousels.
-    footer_font = fonts.load(style.body_font, max(18, int(footer_h * 0.35)), True)
+    footer_size = max(18, int(footer_h * 0.35))
+    footer_font = fonts.load(style.body_font, footer_size, True)
     footer_y = height - margin - footer_font.size
-    draw.text((margin, footer_y), style.name, font=footer_font, fill=accent)
+    fonts.draw_text(draw, (margin, footer_y), style.name, fonts.load(style.body_font, footer_size, True, style.name), accent)
     if number is not None and total:
         counter = f"{number}/{total}"
         draw.text((width - margin - footer_font.getlength(counter), footer_y), counter, font=footer_font, fill=text)

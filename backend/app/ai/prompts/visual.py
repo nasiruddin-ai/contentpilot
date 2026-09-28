@@ -5,6 +5,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, BeforeValidator, Field
 
+from app.core.language import language_rule
+
 
 def _clip(limit: int):
     return BeforeValidator(lambda v: " ".join(str(v or "").split())[:limit])
@@ -40,8 +42,10 @@ INSTRUCTIONS = {
 }
 
 
-def concept_prompt(visual_type: str, brand_name: str, banned_words: list[str], post_text: str) -> str:
+def concept_prompt(visual_type: str, brand_name: str, banned_words: list[str], post_text: str, language: str = "en") -> str:
     banned = ", ".join(banned_words) or "none"
+    rule = language_rule(language)
+    rule = "\n" + rule if rule else ""
     return f"""BRAND: {brand_name}
 BANNED WORDS: {banned}
 
@@ -51,4 +55,4 @@ POST
 TASK
 Write the on-image copy for a {visual_type.replace("_", " ")}.
 {INSTRUCTIONS[visual_type]}
-Also return alt_text: a plain description of the graphic for screen readers."""
+Also return alt_text: a plain description of the graphic for screen readers.{rule}"""

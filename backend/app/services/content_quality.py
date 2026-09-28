@@ -7,6 +7,7 @@ depend on a model noticing them.
 import re
 from dataclasses import dataclass
 
+from app.core.language import ascii_digits, banned_word_pattern, strip_non_word, x_weighted_length
 from app.models import ContentFormat, Platform
 
 
@@ -59,6 +60,17 @@ GENERIC_PHRASES = [
     "harness the power",
     "seamless experience",
     "look no further",
+    # Bengali equivalents of the same filler.
+    "আজকের দ্রুতগতির বিশ্বে",
+    "আজকের ডিজিটাল যুগে",
+    "প্রতিনিয়ত পরিবর্তনশীল",
+    "গেম চেঞ্জার",
+    "বিপ্লব ঘটাবে",
+    "উল্লেখ্য যে",
+    "এটা মনে রাখা গুরুত্বপূর্ণ",
+    "পরিশেষে বলা যায়",
+    "সর্বোপরি বলা যায়",
+    "আর দেরি না করে",
 ]
 
 # Small counts and list markers aren't claims worth checking.
@@ -78,7 +90,7 @@ class Issue:
 def normalize_hashtags(values: list[str]) -> list[str]:
     tags = []
     for value in values:
-        tag = re.sub(r"[^\w]", "", value.lstrip("#"))
+        tag = strip_non_word(value.lstrip("#"))
         if tag and tag.lower() not in {t.lower() for t in tags}:
             tags.append(tag)
     return tags
@@ -108,6 +120,7 @@ def check_post(
 ) -> list[Issue]:
     rules = PLATFORM_RULES[platform]
     issues: list[Issue] = []
+    length = x_weighted_length if platform == Platform.X else len
     text = render(hook, body, cta, hashtags, platform)
     everything = "\n".join([hook, body, cta or ""])
 
@@ -116,10 +129,10 @@ def check_post(
 
     if platform == Platform.X and content_type == ContentFormat.THREAD:
         for number, part in enumerate(re.split(r"\n\s*\n", body), start=1):
-            if len(part) > rules.part_max:
-                issues.append(Issue("error", "too_long", f"Thread post {number} is {len(part)} characters (max {rules.part_max})."))
-    elif len(text) > rules.max_chars:
-        issues.append(Issue("error", "too_long", f"{len(text)} characters (max {rules.max_chars} on {platform})."))
+            if length(part) > rules.part_max:
+                issues.append(Issue("error", "too_long", f"Thread post {number} is {length(part)} characters (max {rules.part_max})."))
+    elif length(text) > rules.max_chars:
+        issues.append(Issue("error", "too_long", f"{length(text)} characters (max {rules.max_chars} on {platform})."))
 
     if rules.hook_max and len(hook) > rules.hook_max:
         issues.append(Issue("error", "title_too_long", f"Title is {len(hook)} characters (max {rules.hook_max})."))
@@ -130,7 +143,7 @@ def check_post(
         )
 
     for word in banned_words:
-        if word and re.search(rf"(?<!\w){re.escape(word)}(?!\w)", everything, re.IGNORECASE):
+        if word and banned_word_pattern(word).search(everything):
             issues.append(Issue("error", "banned_word", f'Uses the banned word "{word}".'))
 
     lowered = everything.lower()
@@ -155,4 +168,4 @@ def _unsupported_numbers(text: str, source_text: str) -> list[Issue]:
 
 
 def _plain(number: str) -> str:
-    return number.replace(",", "").replace("$", "").rstrip("%")
+    return ascii_digits(number).replace(",", "").replace("$", "").rstrip("%")

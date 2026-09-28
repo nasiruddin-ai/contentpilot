@@ -21,7 +21,9 @@ The full build spec is `ContentPilot_AI_Python_FastAPI_Build_Specification.md`; 
 | Prompt 12: Social OAuth and publishing adapters | **Facebook Pages live-verified 2026-09-26** (connect, publish, Graph read-back). LinkedIn and X built and tested against mocks; live tests pending (LinkedIn app "disabled" by LinkedIn; X API is paid) |
 | Prompt 13: Scheduled publishing workers (retries, backoff, idempotency, notifications) | Done; beat sweep verified in Docker 2026-09-24 |
 | Prompt 14: Analytics sync and learning loop | Done; Facebook sync live-verified 2026-09-26 with all metrics (likes, comments, shares, clicks) |
-| Prompt 15: Subscriptions, usage tracking, Stripe billing | Next |
+| Prompt 15: Subscriptions, usage tracking, Stripe billing | Not started (needs a Stripe account) |
+| Prompt 16: Autopilot with configurable approval rules | Done; live copilot and autopilot cycles verified 2026-09-26 (research → ideas → posts → review queue) |
+| Web app (spec §80-81): Next.js frontend for every feature above | Done 2026-09-26; every page rendered against the live API in headless Chrome. Billing page waits for Prompt 15 |
 
 What exists now:
 
@@ -48,7 +50,11 @@ What exists now:
 - X: OAuth 2.0 with PKCE and automatic token refresh, text posts
 - Scheduled publishing: every-minute sweep, retries with backoff, duplicate-safe failure handling, in-app notifications
 - Analytics: 6-hourly metrics sync (Facebook live, X from docs), goal-weighted engagement scoring, reports by post/platform/topic, and a learning loop that feeds opportunity generation
-- 342 pytest tests (the database/Redis ones need Docker running; they are skipped otherwise)
+- Autopilot: daily cycle per brand with posting schedule, per-run cap, AI risk check and configurable approval rules; copilot mode reviews everything
+- Web app (`frontend/`): sign in, onboarding, dashboard, research, opportunities, content editor with AI revisions and visuals, calendar, analytics, autopilot, sources, brand kit, social connections, notifications (see below)
+- Bengali: per-brand post language, Bengali-aware quality checks and Bengali visuals (see below)
+- Engagement: AI-drafted replies to Facebook comments and Messenger messages with an approval inbox (see below)
+- 380 pytest tests (the database/Redis ones need Docker running; they are skipped otherwise)
 
 ## Run with Docker (recommended)
 
@@ -61,8 +67,15 @@ docker compose up --build
 
 The `migrate` service applies database migrations on every start; the API waits for it.
 
+- Web app: http://localhost:3000 (create an account, then follow the onboarding)
 - API: http://localhost:8000/docs
 - Readiness: http://localhost:8000/health/ready should return `"status": "ok"`
+
+The `web` service builds the production bundle, which takes a minute or two the first time. For live-reloading frontend work run `npm run dev` in `frontend/` instead (see `frontend/README.md`) and stop the `web` container so port 3000 is free.
+
+## Deploy to a server
+
+See [DEPLOY.md](DEPLOY.md): one free Oracle Cloud server running `docker-compose.prod.yml` behind Caddy with automatic HTTPS, plus scripts in `deploy/` for server setup, secrets, packaging and backups.
 
 ## Run without Docker
 
@@ -126,6 +139,17 @@ Brand kit fields: website, industry, description, audience, market, goals, tone,
   - If omitted on create, the brand gets the spec's default mix (40/20/15/15/10). Send `[]` for no preference.
   - On PATCH, `content_pillars` replaces the whole mix.
 - Other users' brands always return 404, never 403, so their existence isn't revealed.
+
+## Languages (English and Bengali)
+
+Each brand has a `language`: `en` (default) or `bn`. Set it in the Brand kit ("Post language") or send it on `POST`/`PATCH /api/v1/brands`.
+
+- Sources can be in any language. Research summaries and topic labels stay in English so topics cluster consistently.
+- For `bn` brands, opportunities, posts, revisions, visual copy and alt text are written in Bengali (the rule lives in `app/core/language.py` and is added to every writing prompt through the brand context).
+- Quality checks are script-aware: hashtags and banned words keep Bengali vowel signs intact, Bengali digits are matched against source figures (২৫% = 25%), there is a Bengali generic-phrase list, and X length uses X's own weighting.
+- Visuals: text containing Bengali is drawn with Noto Sans Bengali, English words inside it with the brand font. The Docker image installs the font and `libraqm`, which Pillow needs for correct conjuncts. Without Docker, install a Bengali font and libraqm yourself.
+
+Live-verified 2026-09-26: a Bengali brand produced Bengali opportunities, Facebook and X drafts with no quality issues, and a correctly shaped carousel.
 
 ## Sources and safe fetching
 
@@ -439,6 +463,47 @@ Automatic publishing at `scheduled_at`, with retries and backoff, is Prompt 13.
 - **Learning loop:** once a brand has **5+ scored posts**, `learn()` writes a short "WHAT HAS WORKED" summary (strong and weak pillars, formats, topics, platforms) that is added to the opportunity-generation prompt, and computes per-pillar and per-format priority adjustments of at most **±10**. Research relevance still dominates, and the summary tells the model to keep the pillar mix balanced.
 - Facebook Graph responses embed the access token in paging links; the client never stores or logs raw responses, and `raw` keeps only the reaction breakdown.
 
+## Engagement: comment and Messenger replies (Facebook)
+
+ContentPilot polls the connected Page every 10 minutes (no webhooks, so it works without a public server or Meta app review), drafts a reply to each new comment or message in the brand's voice and language, and puts it in the Inbox.
+
+- Modes: `off`, `review` (a person approves every reply) and `auto` (replies the AI marked safe are sent; questions the business facts don't answer, complaints and buying interest always wait). Auto sends are capped per day.
+- The AI may state facts only from the brand's "business facts" text; it never invents prices or promises. Incoming text is treated as untrusted (prompt-injection defense). Spam and abuse get no reply.
+- Only comments/messages that arrive after the feature is switched on are answered. Comments are read from posts published in the last 30 days; posts deleted on Facebook are skipped. Messenger replies obey Facebook's 24-hour window.
+- Facebook permissions: reading comments needs `pages_read_user_content` (already used by analytics); **replying to comments needs `pages_manage_engagement`; Messenger needs `pages_messaging`.** Add them under Use cases → Customize, tick them in the Facebook Login for Business configuration, then reconnect Facebook. Missing permissions surface as a banner on the Inbox page, not as silent failures. While the Meta app is in development mode, Messenger only shows conversations with people who have a role in the app.
+
+| Endpoint | Notes |
+| --- | --- |
+| `GET` / `PATCH /api/v1/engage/settings?brand_id=` | Mode, comment/message toggles, business facts (max 4000 chars), daily cap. Turning on requires a connected Facebook account and only answers what arrives from then on |
+| `GET /api/v1/engage/inbox?brand_id=&status=` | Items with the incoming text, AI draft, assessment and outcome; statuses `review`, `sent`, `skipped`, `dismissed`, `failed` |
+| `POST /api/v1/engage/inbox/{id}/send` | Approve and send, optionally with `{"reply": "edited text"}`. 60 per hour per IP |
+| `POST /api/v1/engage/inbox/{id}/dismiss` | |
+| `POST /api/v1/engage/poll` | `{"brand_id"}`: check the Page now (202). 12 per hour per IP |
+
+## Autopilot
+
+`app/services/autopilot_service.py`, spec sections 5.2 and 83 (milestone 10).
+
+**Modes:** `off`; `copilot` (Autopilot creates content, a person approves every post); `autopilot` (brand-safe evergreen posts are approved and scheduled automatically, everything else waits for review).
+
+**A cycle** (hourly tick, each brand about once a day, or `POST /autopilot/run`):
+1. Queue research for sources not fetched in 24 hours (results feed the next cycle).
+2. Generate content ideas if fewer than 3 unused ones exist (fails clearly when there is no research).
+3. For each open posting slot (up to `max_posts_per_run`): write posts for the chosen platforms from the best unused idea.
+4. Route each post:
+   - any error-level quality issue → **rejected** (archived with the reason);
+   - copilot mode → **review**;
+   - autopilot mode → an AI risk check (news/current events, sensitive topic, product claims, high-risk factual claims) plus the rules below → **schedule** or **review**. If the risk check fails, the post waits for review.
+5. Notify: `approval_required` and/or `autopilot_scheduled`. Every decision and its reasons are stored on the run.
+
+**Settings** (`GET/PATCH /autopilot/settings?brand_id=`): mode, platforms (must be connected), `days_of_week` (0 = Monday), `post_time`, IANA `timezone`, `horizon_days`, `max_posts_per_run`, `auto_visual` (carousel for scheduled carousel posts), and `approval_rules`:
+- `auto_approve_pillars` (default educational, how_to, faq) and `always_review_pillars` (default promotion, opinion, industry_insight, comparison, case_study);
+- `review_if`: each of the four AI flags and `quality_warnings`, all on by default.
+
+Slots come from the schedule (`GET /autopilot/slots`), skipping times already taken. Runs: `GET /autopilot/runs`, `GET /autopilot/runs/{id}`. The review queue is `GET /posts?status=review`, and normal approve/edit/schedule applies.
+
+Live on 2026-09-26 (copilot mode, gardening brand): 10 articles → 3 ideas → 2 on-topic Facebook posts in the review queue, 108 seconds, no quality issues.
+
 ## Database migrations
 
 Postgres from Docker is on **port 5433** and Redis on **6380** on your PC (5432 and 6379 are used by other software on this machine).
@@ -470,5 +535,12 @@ backend/app/
   services/   business logic (routes stay thin)
   workers/    celery_app.py + task modules
   models/ schemas/ ai/ research/ integrations/ utils/   (filled in by later milestones)
-frontend/     Next.js app (not started)
+frontend/src/
+  app/(marketing)/ public landing page at /
+  app/(auth)/ login, register
+  app/(app)/  dashboard, research, opportunities, content, content/[id], calendar, analytics,
+              autopilot, sources, brand, settings, notifications, onboarding
+  components/ app shell, brand form, shared widgets, ui/ (shadcn)
+  lib/        api client, brand context, types, hooks, formatting
+  proxy.ts    auth redirect gate
 ```

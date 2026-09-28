@@ -19,7 +19,16 @@ import httpx
 
 from app.core.config import get_settings
 
-SCOPES = ("pages_show_list", "pages_manage_posts", "pages_read_engagement", "pages_read_user_content", "read_insights")
+SCOPES = (
+    "pages_show_list",
+    "pages_manage_posts",
+    "pages_read_engagement",
+    "pages_read_user_content",
+    "read_insights",
+    # Replying: pages_manage_engagement for comments, pages_messaging for Messenger.
+    "pages_manage_engagement",
+    "pages_messaging",
+)
 # Metric names confirmed valid against Graph v26 on 2026-09-26. Impressions and reach
 # metrics (post_impressions*, page_impressions*) have been retired by Meta.
 POST_INSIGHT_METRICS = "post_clicks,post_reactions_by_type_total"
@@ -193,6 +202,82 @@ class FacebookClient:
                 raise
             metrics.missing_permissions.append("read_insights")
         return metrics
+
+    async def comments(self, post_id: str, *, limit: int = 100) -> list[dict]:
+        """Comments on a Page post, oldest first, replies included (needs pages_read_user_content).
+        Each: {id, message, created_time, parent_id, author_id, author_name}. In development
+        mode Facebook hides the author of comments by people without a role in the app."""
+        data = await self._call(
+            "GET",
+            f"/{post_id}/comments",
+            params={
+                "fields": "id,message,created_time,parent{id},from{id,name}",
+                "filter": "stream",
+                "order": "chronological",
+                "limit": str(limit),
+            },
+        )
+        out = []
+        for c in data.get("data") or []:
+            author = c.get("from") or {}
+            out.append(
+                {
+                    "id": str(c["id"]),
+                    "message": c.get("message") or "",
+                    "created_time": c.get("created_time") or "",
+                    "parent_id": str((c.get("parent") or {}).get("id") or "") or None,
+                    "author_id": str(author.get("id") or "") or None,
+                    "author_name": author.get("name") or "",
+                }
+            )
+        return out
+
+    async def reply_to_comment(self, comment_id: str, message: str) -> str:
+        """Replies as the Page (needs pages_manage_engagement). Returns the reply's comment ID."""
+        data = await self._call("POST", f"/{comment_id}/comments", data={"message": message})
+        reply_id = data.get("id")
+        if not reply_id:
+            raise FacebookError("REPLY_UNCONFIRMED", "Facebook accepted the reply but returned no ID.")
+        return str(reply_id)
+
+    async def conversations(self, page_id: str, *, limit: int = 25) -> list[dict]:
+        """Recent Messenger conversations with their last few messages (needs pages_messaging).
+        Each: {id, updated_time, messages: [{id, message, created_time, author_id, author_name}]},
+        messages newest first."""
+        data = await self._call(
+            "GET",
+            f"/{page_id}/conversations",
+            params={
+                "fields": "id,updated_time,messages.limit(10){id,message,created_time,from}",
+                "limit": str(limit),
+            },
+        )
+        out = []
+        for convo in data.get("data") or []:
+            messages = []
+            for m in ((convo.get("messages") or {}).get("data")) or []:
+                author = m.get("from") or {}
+                messages.append(
+                    {
+                        "id": str(m["id"]),
+                        "message": m.get("message") or "",
+                        "created_time": m.get("created_time") or "",
+                        "author_id": str(author.get("id") or "") or None,
+                        "author_name": author.get("name") or "",
+                    }
+                )
+            out.append({"id": str(convo["id"]), "updated_time": convo.get("updated_time") or "", "messages": messages})
+        return out
+
+    async def send_message(self, page_id: str, recipient_id: str, text: str) -> str:
+        """Sends a Messenger reply as the Page (needs pages_messaging). Facebook only allows
+        this within 24 hours of the person's last message; the caller enforces that window."""
+        data = await self._call(
+            "POST",
+            f"/{page_id}/messages",
+            json={"recipient": {"id": recipient_id}, "messaging_type": "RESPONSE", "message": {"text": text}},
+        )
+        return str(data.get("message_id") or "")
 
     async def create_post(self, page_id: str, message: str, photo_ids: list[str] | None = None) -> str:
         form = {"message": message}

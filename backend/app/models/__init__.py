@@ -1,5 +1,7 @@
 # Import every model here so Base.metadata (and Alembic) sees all tables.
 from app.models.analytics import AnalyticsSync, PostMetric, SyncStatus
+from app.models.autopilot import DEFAULT_RULES, AutopilotMode, AutopilotRun, AutopilotRunStatus, AutopilotSettings
+from app.models.engage import EngageMode, EngageSettings, InboxItem, InboxKind, InboxStatus
 from app.models.ai_run import AIRun, AIRunStatus
 from app.models.brand import Brand
 from app.models.content_pillar import BrandContentPillar, ContentPillar
@@ -34,12 +36,17 @@ __all__ = [
     "AIRun",
     "AIRunStatus",
     "AnalyticsSync",
+    "AutopilotMode",
+    "AutopilotRun",
+    "AutopilotRunStatus",
+    "AutopilotSettings",
     "Brand",
     "BrandContentPillar",
     "ContentFormat",
     "ContentGeneration",
     "ContentOpportunity",
     "ContentPillar",
+    "DEFAULT_RULES",
     "EDITABLE_STATUSES",
     "FetchFrequency",
     "GenerationStatus",
@@ -69,6 +76,11 @@ __all__ = [
     "SourceType",
     "SyncStatus",
     "Topic",
+    "EngageMode",
+    "EngageSettings",
+    "InboxItem",
+    "InboxKind",
+    "InboxStatus",
     "User",
     "Visual",
     "VisualStatus",

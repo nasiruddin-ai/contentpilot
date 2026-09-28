@@ -21,9 +21,9 @@ def _string_list() -> Mapped[list[str]]:
 
 class Brand(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "brands"
-    __table_args__ = tuple(
-        CheckConstraint(f"{column} ~ '^#[0-9A-Fa-f]{{6}}$'", name=f"{column}_hex")
-        for column in COLOR_COLUMNS
+    __table_args__ = (
+        *(CheckConstraint(f"{column} ~ '^#[0-9A-Fa-f]{{6}}$'", name=f"{column}_hex") for column in COLOR_COLUMNS),
+        CheckConstraint("language IN ('en', 'bn')", name="language_known"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -49,6 +49,8 @@ class Brand(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     preferred_words: Mapped[list[str]] = _string_list()
     banned_words: Mapped[list[str]] = _string_list()
+    # Language of generated posts and visuals: "en" or "bn" (see app.core.language).
+    language: Mapped[str] = mapped_column(String(8), default="en", server_default="en")
 
     user: Mapped["User"] = relationship(back_populates="brands")
     # selectin: loaded eagerly, since lazy loading isn't available on async sessions.

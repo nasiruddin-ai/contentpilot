@@ -1,0 +1,134 @@
+# Production stack for one server (see DEPLOY.md).
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Differences from docker-compose.yml (development):
+# - Code is baked into the images: no source mounts, no auto-reload.
+# - Only Caddy is reachable from outside (ports 80/443, automatic HTTPS).
+#   Postgres, Redis, the API and the web app are on the internal network only.
+# - Every service restarts after a crash or a server reboot.
+# - The database password comes from .env instead of being hard-coded.
+
+x-backend: &backend
+  build: ./backend
+  restart: unless-stopped
+  env_file: ${ENV_FILE:-.env}
+  environment:
+    APP_ENV: production
+    DATABASE_URL: postgresql+psycopg://contentpilot:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/contentpilot
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/0
+    CELERY_RESULT_BACKEND: redis://redis:6379/1
+    MEDIA_ROOT: /data/media
+  volumes:
+    - media_data:/data/media
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: contentpilot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: contentpilot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contentpilot -d contentpilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Append-only file: queued jobs survive a restart.
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  # Applies database migrations, then exits. Everything else waits for it.
+  migrate:
+    <<: *backend
+    restart: "no"
+    command: alembic upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  api:
+    <<: *backend
+    # Caddy is the only thing that can reach the API, so its X-Forwarded-For header is trusted:
+    # rate limits then apply per visitor instead of to everyone at once.
+    command: >-
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+      --proxy-headers --forwarded-allow-ips=*
+
+  worker:
+    <<: *backend
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+    healthcheck:
+      disable: true
+
+  beat:
+    <<: *backend
+    command: celery -A app.workers.celery_app beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    healthcheck:
+      disable: true
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        API_INTERNAL_URL: http://api:8000
+    restart: unless-stopped
+    depends_on:
+      - api
+    logging: *logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # HTTPS certificates. Keep this volume, or Let's Encrypt limits may block new ones.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+    logging: *logging
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_data:
+  caddy_data:
+  caddy_config:

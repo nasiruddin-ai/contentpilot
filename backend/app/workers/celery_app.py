@@ -30,6 +30,8 @@ celery = Celery(
         "app.workers.visual_tasks",
         "app.workers.publishing_tasks",
         "app.workers.analytics_tasks",
+        "app.workers.autopilot_tasks",
+        "app.workers.engage_tasks",
     ],
 )
 
@@ -60,6 +62,14 @@ celery.conf.update(
         "sync-analytics": {
             "task": "analytics.sync_all",
             "schedule": crontab(minute=15, hour="*/6"),
+        },
+        "autopilot-tick": {
+            "task": "autopilot.tick",
+            "schedule": crontab(minute=5),  # hourly; each brand runs about once a day
+        },
+        "engage-tick": {
+            "task": "engage.tick",
+            "schedule": crontab(minute="*/10"),  # replies to comments/messages shouldn't wait long
         },
         "purge-stale-refresh-tokens": {
             "task": "auth.purge_stale_refresh_tokens",

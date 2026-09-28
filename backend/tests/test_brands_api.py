@@ -196,3 +196,15 @@ def test_delete_brand(owner):
 
 def test_malformed_brand_id_is_422(owner):
     assert owner.get(f"{BRANDS}/not-a-uuid").status_code == 422
+
+
+def test_language_defaults_to_english_and_can_be_bengali(owner):
+    assert create(owner).json()["language"] == "en"
+    brand = create(owner, name="Easy Garden BD", language="bn").json()
+    assert brand["language"] == "bn"
+
+    url = f"{BRANDS}/{brand['id']}"
+    assert owner.patch(url, json={"language": "en"}).json()["language"] == "en"
+    assert owner.patch(url, json={"language": "fr"}).status_code == 422
+    assert owner.patch(url, json={"language": None}).status_code == 422
+    assert owner.get(url).json()["language"] == "en"

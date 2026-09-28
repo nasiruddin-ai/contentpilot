@@ -3,6 +3,8 @@ from fastapi import APIRouter
 from app.api.v1 import (
     analytics,
     auth,
+    autopilot,
+    engage,
     brands,
     calendar,
     notifications,
@@ -31,3 +33,5 @@ api_router.include_router(social.router)
 api_router.include_router(publishing.router)
 api_router.include_router(notifications.router)
 api_router.include_router(analytics.router)
+api_router.include_router(autopilot.router)
+api_router.include_router(engage.router)

@@ -7,3 +7,4 @@ celerybeat-schedule*
 node_modules/
 .next/
 backend/media/
+backups/

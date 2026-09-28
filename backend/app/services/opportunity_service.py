@@ -7,7 +7,6 @@ validation → database (spec section 35).
 import asyncio
 import logging
 import math
-import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -21,6 +20,7 @@ from app.ai.prompts.strategy import SYSTEM, OpportunityBatch, OpportunityDraft, 
 from app.ai.service import AIContext, AIError, AIService, ModelTier
 from app.core.database import sync_session
 from app.core.errors import AppError
+from app.core.language import banned_word_pattern
 from app.models import (
     Brand,
     ContentOpportunity,
@@ -80,7 +80,7 @@ def priority_score(relevance: int, brand_fit: int, freshness: int, novelty: int)
 
 def contains_banned_word(text: str, banned: list[str]) -> str | None:
     for word in banned:
-        if word and re.search(rf"(?<!\w){re.escape(word)}(?!\w)", text, re.IGNORECASE):
+        if word and banned_word_pattern(word).search(text):
             return word
     return None
 

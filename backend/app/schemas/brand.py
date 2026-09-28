@@ -13,6 +13,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.core.language import ContentLanguage
 from app.models.content_pillar import ContentPillar
 
 
@@ -81,6 +82,7 @@ class BrandFields(BaseModel):
     body_font: FontName | None = None
     preferred_words: WordList = []
     banned_words: WordList = []
+    language: ContentLanguage = ContentLanguage.ENGLISH
 
 
 class BrandCreate(BrandFields):
@@ -98,6 +100,7 @@ NON_NULLABLE = {
     "preferred_words",
     "banned_words",
     "content_pillars",
+    "language",
 }
 
 
@@ -110,6 +113,7 @@ class BrandUpdate(BrandFields):
     visual_style: Tags | None = None
     preferred_words: WordList | None = None
     banned_words: WordList | None = None
+    language: ContentLanguage | None = None
     content_pillars: PillarDistribution | None = None
 
     @model_validator(mode="after")
@@ -141,6 +145,7 @@ class BrandRead(BaseModel):
     body_font: str | None
     preferred_words: list[str]
     banned_words: list[str]
+    language: str
     content_pillars: list[PillarWeight]
     created_at: datetime
     updated_at: datetime

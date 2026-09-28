@@ -7,6 +7,8 @@ vector search.
 import hashlib
 import re
 
+from app.core.language import WORD_CHARS
+
 SIMHASH_BITS = 64
 # Up to this many differing bits counts as the same text with small edits.
 NEAR_DUPLICATE_DISTANCE = 3
@@ -14,7 +16,8 @@ NEAR_DUPLICATE_DISTANCE = 3
 # so shorter texts rely on exact-hash and URL checks only.
 NEAR_DUPLICATE_MIN_CHARS = 2000
 _MAX_TOKENS = 20_000
-_WORD = re.compile(r"\w+")
+# Bengali-safe: plain \w would split words at vowel signs.
+_WORD = re.compile(f"[{WORD_CHARS}]+")
 
 
 def content_hash(text: str) -> str:

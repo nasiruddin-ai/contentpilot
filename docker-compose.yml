@@ -77,6 +77,18 @@ services:
     healthcheck:
       disable: true
 
+  # The web app. Proxies /api and /media to the api service, so the browser only sees localhost:3000.
+  web:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the bundle at build time (Next.js resolves rewrites during `next build`).
+        API_INTERNAL_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
 volumes:
   postgres_data:
   media_data:

@@ -6,7 +6,6 @@ Post → visual agent (on-image copy) → layout → render → storage → bran
 import asyncio
 import io
 import logging
-import re
 import uuid
 import zipfile
 from datetime import UTC, datetime, timedelta
@@ -20,6 +19,7 @@ from app.ai.prompts.visual import VisualConcept
 from app.ai.service import AIContext, AIError, ModelTier
 from app.core.database import sync_session
 from app.core.errors import AppError
+from app.core.language import banned_word_pattern
 from app.models import Brand, Platform, User
 from app.models.post import Post
 from app.models.visual import RENDERED_TYPES, Visual, VisualStatus, VisualType
@@ -90,7 +90,7 @@ def brand_check(slides: list[render.Slide], banned_words: list[str], truncated: 
     issues = []
     text = "\n".join(" ".join([s.headline, s.subtext, *s.points]) for s in slides)
     for word in banned_words:
-        if word and re.search(rf"(?<!\w){re.escape(word)}(?!\w)", text, re.IGNORECASE):
+        if word and banned_word_pattern(word).search(text):
             issues.append({"severity": "error", "type": "banned_word", "detail": f'Uses the banned word "{word}".'})
     for value in truncated:
         issues.append({"severity": "warning", "type": "text_truncated", "detail": f'Shortened to fit: "{value[:60]}"'})
@@ -124,7 +124,7 @@ def execute_visual(visual_id: uuid.UUID) -> dict:
             return {"status": "failed", "error": visual.error}
         visual.status = VisualStatus.RUNNING
         brand = db.get(Brand, visual.brand_id)
-        style, banned = style_for(brand), list(brand.banned_words)
+        style, banned, language = style_for(brand), list(brand.banned_words), brand.language
         visual_type, ratio, brand_id = visual.visual_type, visual.aspect_ratio, brand.id
         previous_keys = [a["key"] for a in visual.assets or []]
         post_id = post.id
@@ -137,7 +137,7 @@ def execute_visual(visual_id: uuid.UUID) -> dict:
         concept = asyncio.run(
             topic_service.ai_service_factory().generate_structured(
                 task="visual_concept",
-                prompt=visual_prompts.concept_prompt(visual_type.value, style.name, banned, post_text),
+                prompt=visual_prompts.concept_prompt(visual_type.value, style.name, banned, post_text, language),
                 schema=VisualConcept,
                 system=visual_prompts.SYSTEM,
                 context=context,
