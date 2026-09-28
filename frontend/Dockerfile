@@ -10,6 +10,7 @@ COPY . .
 # Rewrites are resolved at build time, so the backend address must be known here.
 ARG API_INTERNAL_URL=http://localhost:8000
 ENV API_INTERNAL_URL=$API_INTERNAL_URL \
+    NEXT_OUTPUT=standalone \
     NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 

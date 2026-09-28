@@ -6,8 +6,8 @@ import type { NextConfig } from "next";
 const API_URL = (process.env.API_INTERNAL_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
 const nextConfig: NextConfig = {
-  // Self-contained server for the Docker image (see Dockerfile).
-  output: "standalone",
+  // Self-contained server for the Docker image (set there); Vercel manages its own output.
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   // The monorepo has other lockfiles above this folder; pin the root so Turbopack doesn't guess.
   turbopack: { root: path.resolve(__dirname) },
   async rewrites() {

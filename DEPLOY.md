@@ -169,6 +169,18 @@ scp -i "$env:USERPROFILE\.ssh\contentpilot.key" "ubuntu@SERVER-IP:~/contentpilot
 
 ---
 
+## Optional: host the website on Vercel instead
+
+The website (and only the website) can run on Vercel. The API, the background workers, the scheduler, PostgreSQL and Redis cannot: Vercel has no always-on processes, so scheduled posts and the inbox would stop. The backend must already be live on its own server (steps above) before Vercel is useful.
+
+1. Push this repository to GitHub (see the project README).
+2. On vercel.com choose **Add New → Project**, import the repository, and set **Root Directory** to `frontend`.
+3. Under **Environment Variables** add `API_INTERNAL_URL` = `https://YOUR-BACKEND-DOMAIN` (the address from the steps above).
+4. Deploy. Then set the backend's `APP_URL` in its `.env` to your Vercel address (for cookies and the cross-site check) and restart it: `docker compose -f docker-compose.prod.yml up -d`.
+5. In the Meta app, add the Vercel domain under App domains.
+
+Notes: Vercel's free Hobby plan is for non-commercial use, so move to a paid plan before charging customers. When the website runs on Vercel you can ignore the `web` service on the server; everything else stays as described above.
+
 ## Updating to a new version
 
 Repeat the upload from step 6, then on the server:
